@@ -1,21 +1,28 @@
-from datetime import datetime, timezone
-from uuid import uuid4
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from app.schemas.incident import (IncidentCreate, IncidentResponse)
+from app.models.incident import Incident
+from app.schemas.incident import IncidentCreate
 
-incidents = []
 
-def create_incident(incident_data: IncidentCreate) -> IncidentResponse:
-    incident = IncidentResponse(
-        id=uuid4(),
+def create_incident(
+    db: Session,
+    incident_data: IncidentCreate
+):
+    incident = Incident(
         title=incident_data.title,
         description=incident_data.description,
-        severity=incident_data.severity,
-        status="open",
-        created_at=datetime.now(timezone.utc)
+        severity=incident_data.severity
     )
-    incidents.append(incident)
+
+    db.add(incident)
+    db.commit()
+    db.refresh(incident)
+
     return incident
 
-def get_all_incidents() -> list[IncidentResponse]:
-    return incidents
+
+def get_all_incidents(db: Session):
+    statement = select(Incident)
+
+    return db.scalars(statement).all()
