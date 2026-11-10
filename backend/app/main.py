@@ -1,5 +1,9 @@
 from fastapi import FastAPI
 from app.api.routes import incidents
+from app.db.database import Base, engine
+from app.models.incident import Incident
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Faultlens API",
