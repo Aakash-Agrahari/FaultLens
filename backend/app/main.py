@@ -1,25 +1,25 @@
-from fastapi import FastAPI
-from app.api.routes import incidents
-from app.db.database import Base, engine
-from app.models.incident import Incident
 
-Base.metadata.create_all(bind=engine)
+from fastapi import FastAPI
+
+from app.api.routes import incidents
+
 
 app = FastAPI(
-    title="Faultlens API",
-    description="AI powered Incident Intelligence Platform",
+    title="FaultLens API",
+    description="AI-powered Incident Intelligence Platform",
     version="1.0.0"
 )
 
 app.include_router(incidents.router)
 
+
 @app.get("/")
 def home():
-    return{
-        "message": "Welcome to FaultLens",
-        "description": "AI powered Incident Intelligence Platform",
+    return {
+        "message": "Welcome to FaultLens!",
         "status": "Running"
     }
+
 
 @app.get("/health")
 def health_check():
