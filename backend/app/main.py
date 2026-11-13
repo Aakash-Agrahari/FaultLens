@@ -1,7 +1,7 @@
 
 from fastapi import FastAPI
 
-from app.api.routes import incidents
+from app.api.routes import incidents, logs
 
 
 app = FastAPI(
@@ -11,6 +11,7 @@ app = FastAPI(
 )
 
 app.include_router(incidents.router)
+app.include_router(logs.router)
 
 
 @app.get("/")
