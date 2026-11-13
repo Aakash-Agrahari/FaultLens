@@ -3,13 +3,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-class LogEntryRespone(BaseModel):
+
+class LogEntryResponse(BaseModel):
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     incident_id: UUID
-    source_files: str
-    line_number:int
+    source_file: str
+    line_number: int
     timestamp: datetime | None
     level: str
     message: str
