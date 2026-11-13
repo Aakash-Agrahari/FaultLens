@@ -25,3 +25,13 @@ class LogUploadResponse(BaseModel):
     total_lines: int
     entries_created: int
     level_counts: dict[str, int]
+
+
+class LogSummaryResponse(BaseModel):
+
+    incident_id: UUID
+    total_entries: int
+    level_counts: dict[str, int]
+    first_timestamp: datetime | None
+    last_timestamp: datetime | None
+    recent_entries: list[LogEntryResponse]
