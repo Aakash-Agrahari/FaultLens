@@ -15,14 +15,15 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.schemas.log import (
     LogEntryResponse,
-    LogUploadResponse
+    LogUploadResponse,
+    LogSummaryResponse
 )
 
 from app.services.log_service import (
     process_log_upload,
-    get_incident_logs
+    get_incident_logs,
+    get_log_summary
 )
-
 
 router = APIRouter(
     prefix="/api/v1/incidents",
@@ -95,3 +96,8 @@ def retrieve_incident_logs(
         db,
         incident_id
     )
+
+
+@router.get("/{incident_id}/logs/summary", response_model=LogSummaryResponse)
+def retrieve_log_summary(incident_id: UUID, db: Session = Depends(get_db)):
+    return get_log_summary(db, incident_id)
