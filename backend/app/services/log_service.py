@@ -3,6 +3,7 @@ from collections import Counter
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -85,3 +86,63 @@ def get_incident_logs(
     )
 
     return db.scalars(statement).all()
+
+
+
+def get_log_summary(db: Session, incident_id: UUID):
+    incident = db.get(Incident, incident_id)
+
+    if incident is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Incident not found"
+        )
+
+    # Count log entries by severity directly in PostgreSQL.
+    count_statement = (
+        select(LogEntry.level, func.count(LogEntry.id))
+        .where(LogEntry.incident_id == incident_id)
+        .group_by(LogEntry.level)
+    )
+
+    level_counts = {
+        level: count
+        for level, count in db.execute(count_statement).all()
+    }
+
+    total_entries = sum(level_counts.values())
+
+    # Find the earliest and latest log timestamps.
+    timestamp_statement = select(
+        func.min(LogEntry.timestamp),
+        func.max(LogEntry.timestamp)
+    ).where(LogEntry.incident_id == incident_id)
+
+    first_timestamp, last_timestamp = db.execute(
+        timestamp_statement
+    ).one()
+
+    # Retrieve the five most recent errors or critical events.
+    error_statement = (
+        select(LogEntry)
+        .where(
+            LogEntry.incident_id == incident_id,
+            LogEntry.level.in_(["ERROR", "CRITICAL"])
+        )
+        .order_by(
+            LogEntry.timestamp.desc().nullslast(),
+            LogEntry.line_number.desc()
+        )
+        .limit(5)
+    )
+
+    recent_errors = db.scalars(error_statement).all()
+
+    return {
+        "incident_id": incident_id,
+        "total_entries": total_entries,
+        "level_counts": level_counts,
+        "first_timestamp": first_timestamp,
+        "last_timestamp": last_timestamp,
+        "recent_errors": recent_errors
+    }
