@@ -1,0 +1,6 @@
+
+2026-11-12 10:20:30 INFO Application started successfully
+2026-11-12 10:21:10 INFO Database connection established
+2026-11-12 10:22:15 WARNING Database response time is high
+2026-11-12 10:22:30 ERROR Database connection timeout
+2026-11-12 10:22:35 CRITICAL Order processing failed
