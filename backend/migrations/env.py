@@ -10,6 +10,7 @@ from app.db.database import Base
 # Import models so Alembic can discover their tables.
 from app.models.incident import Incident
 
+from app.models.log_entry import LogEntry
 
 config = context.config
 
