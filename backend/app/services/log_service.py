@@ -10,6 +10,7 @@ from app.models.incident import Incident
 from app.models.log_entry import LogEntry
 from app.services.log_parser import parse_log_file
 
+from datetime import datetime
 
 def process_log_upload(
     db: Session,
@@ -264,4 +265,99 @@ def get_log_analysis(db: Session, incident_id: UUID):
         "total_entries": total_entries,
         "analyzed_entries": len(entries),
         "findings": findings
+    }
+
+
+
+def get_log_correlations(db: Session, incident_id: UUID):
+    incident = db.get(Incident, incident_id)
+
+    if incident is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Incident not found"
+        )
+
+    time_window_minutes = 5
+    max_entries = 5000
+    max_groups = 50
+
+    # Retrieve important log entries that have timestamps.
+    statement = (
+        select(LogEntry)
+        .where(
+            LogEntry.incident_id == incident_id,
+            LogEntry.level.in_(["WARNING", "ERROR", "CRITICAL"]),
+            LogEntry.timestamp.is_not(None)
+        )
+        .order_by(LogEntry.timestamp.asc(), LogEntry.line_number.asc())
+        .limit(max_entries)
+    )
+
+    entries = db.scalars(statement).all()
+
+    groups = []
+    current_group = None
+
+    def save_group():
+        if current_group is not None and current_group["event_count"] >= 2:
+            groups.append({
+                "event_count": current_group["event_count"],
+                "start_timestamp": current_group["start_timestamp"],
+                "end_timestamp": current_group["end_timestamp"],
+                "events": current_group["events"]
+            })
+
+    for entry in entries:
+
+        # Start a new group if no group exists.
+        if current_group is None:
+            current_group = {
+                "start_timestamp": entry.timestamp,
+                "end_timestamp": entry.timestamp,
+                "event_count": 1,
+                "events": [entry]
+            }
+            continue
+
+        # Compare against the beginning of the current group.
+        window_end = current_group["start_timestamp"] + timedelta(
+            minutes=time_window_minutes
+        )
+
+        if entry.timestamp <= window_end:
+            current_group["event_count"] += 1
+            current_group["end_timestamp"] = entry.timestamp
+
+            # Preserve up to 10 evidence entries per group.
+            if len(current_group["events"]) < 10:
+                current_group["events"].append(entry)
+
+        else:
+            save_group()
+
+            if len(groups) >= max_groups:
+                break
+
+            current_group = {
+                "start_timestamp": entry.timestamp,
+                "end_timestamp": entry.timestamp,
+                "event_count": 1,
+                "events": [entry]
+            }
+
+    else:
+        save_group()
+
+    truncated = (
+        len(entries) == max_entries
+        or len(groups) >= max_groups
+    )
+
+    return {
+        "incident_id": incident_id,
+        "analyzed_entries": len(entries),
+        "time_window_minutes": time_window_minutes,
+        "groups": groups,
+        "truncated": truncated
     }
