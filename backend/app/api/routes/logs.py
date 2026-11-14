@@ -16,13 +16,15 @@ from app.db.database import get_db
 from app.schemas.log import (
     LogEntryResponse,
     LogUploadResponse,
-    LogSummaryResponse
+    LogSummaryResponse,
+    LogAnalysisResponse
 )
 
 from app.services.log_service import (
     process_log_upload,
     get_incident_logs,
-    get_log_summary
+    get_log_summary,
+    get_log_analysis
 )
 
 router = APIRouter(
@@ -101,3 +103,15 @@ def retrieve_incident_logs(
 @router.get("/{incident_id}/logs/summary", response_model=LogSummaryResponse)
 def retrieve_log_summary(incident_id: UUID, db: Session = Depends(get_db)):
     return get_log_summary(db, incident_id)
+
+
+
+@router.get(
+    "/{incident_id}/logs/analysis",
+    response_model=LogAnalysisResponse
+)
+def retrieve_log_analysis(
+    incident_id: UUID,
+    db: Session = Depends(get_db)
+):
+    return get_log_analysis(db, incident_id)
