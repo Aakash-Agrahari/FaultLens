@@ -66,3 +66,21 @@ class LogCorrelationResponse(BaseModel):
     time_window_minutes: int
     groups: list[LogCorrelationGroupResponse]
     truncated: bool
+
+
+class AnomalyFindingResponse(BaseModel):
+    bucket_start: datetime
+    bucket_end: datetime
+    event_count: int
+    baseline_count: float
+    threshold: float
+    evidence: list[LogEntryResponse]
+
+
+class LogAnomalyResponse(BaseModel):
+    incident_id: UUID
+    analyzed_entries: int
+    buckets_analyzed: int
+    bucket_size_minutes: int
+    anomalies: list[AnomalyFindingResponse]
+    truncated: bool    
