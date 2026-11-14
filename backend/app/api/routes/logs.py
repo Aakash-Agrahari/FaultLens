@@ -131,3 +131,15 @@ def retrieve_log_correlations(
     db: Session = Depends(get_db)
 ):
     return get_log_correlations(db, incident_id)
+
+
+
+@router.get(
+    "/{incident_id}/logs/anomalies",
+    response_model=LogAnomalyResponse
+)
+def retrieve_log_anomalies(
+    incident_id: UUID,
+    db: Session = Depends(get_db)
+):
+    return get_log_anomalies(db, incident_id)
