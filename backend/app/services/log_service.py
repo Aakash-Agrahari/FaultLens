@@ -12,6 +12,8 @@ from app.services.log_parser import parse_log_file
 
 from datetime import datetime
 
+from statistics import median
+
 def process_log_upload(
     db: Session,
     incident_id: UUID,
@@ -360,4 +362,92 @@ def get_log_correlations(db: Session, incident_id: UUID):
         "time_window_minutes": time_window_minutes,
         "groups": groups,
         "truncated": truncated
+    }
+
+
+def get_log_anomalies(db: Session, incident_id: UUID):
+    incident = db.get(Incident, incident_id)
+
+    if incident is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Incident not found"
+        )
+
+    bucket_size_minutes = 5
+    max_entries = 5000
+    minimum_buckets = 4
+
+    # Retrieve timestamped warning and higher-severity events.
+    statement = (
+        select(LogEntry)
+        .where(
+            LogEntry.incident_id == incident_id,
+            LogEntry.level.in_(["WARNING", "ERROR", "CRITICAL"]),
+            LogEntry.timestamp.is_not(None)
+        )
+        .order_by(LogEntry.timestamp.asc(), LogEntry.line_number.asc())
+        .limit(max_entries)
+    )
+
+    entries = db.scalars(statement).all()
+
+    # Group events into five-minute time buckets.
+    buckets = {}
+
+    for entry in entries:
+        timestamp = entry.timestamp
+
+        bucket_minute = (
+            timestamp.minute // bucket_size_minutes
+        ) * bucket_size_minutes
+
+        bucket_start = timestamp.replace(
+            minute=bucket_minute,
+            second=0,
+            microsecond=0
+        )
+
+        if bucket_start not in buckets:
+            buckets[bucket_start] = []
+
+        buckets[bucket_start].append(entry)
+
+    # Calculate the baseline using observed buckets.
+    bucket_counts = [
+        len(bucket_entries)
+        for bucket_entries in buckets.values()
+    ]
+
+    anomalies = []
+
+    if len(bucket_counts) >= minimum_buckets:
+        baseline_count = float(median(bucket_counts))
+
+        # A bucket must have at least 3 events and
+        # three times the median count to be flagged.
+        threshold = max(3.0, baseline_count * 3)
+
+        for bucket_start, bucket_entries in buckets.items():
+            event_count = len(bucket_entries)
+
+            if event_count >= threshold:
+                anomalies.append({
+                    "bucket_start": bucket_start,
+                    "bucket_end": bucket_start + timedelta(
+                        minutes=bucket_size_minutes
+                    ),
+                    "event_count": event_count,
+                    "baseline_count": baseline_count,
+                    "threshold": threshold,
+                    "evidence": bucket_entries[:10]
+                })
+
+    return {
+        "incident_id": incident_id,
+        "analyzed_entries": len(entries),
+        "buckets_analyzed": len(buckets),
+        "bucket_size_minutes": bucket_size_minutes,
+        "anomalies": anomalies,
+        "truncated": len(entries) == max_entries
     }
