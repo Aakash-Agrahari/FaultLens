@@ -35,3 +35,19 @@ class LogSummaryResponse(BaseModel):
     first_timestamp: datetime | None
     last_timestamp: datetime | None
     recent_entries: list[LogEntryResponse]
+
+
+class LogFindingResponse(BaseModel):
+    rule_id: str
+    title: str
+    severity: str
+    description: str
+    occurrences: int
+    evidence: list[LogEntryResponse]
+
+
+class LogAnalysisResponse(BaseModel):
+    incident_id: UUID
+    total_entries: int
+    analyzed_entries: int
+    findings: list[LogFindingResponse]    
