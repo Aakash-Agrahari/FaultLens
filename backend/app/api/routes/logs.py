@@ -18,7 +18,8 @@ from app.schemas.log import (
     LogUploadResponse,
     LogSummaryResponse,
     LogAnalysisResponse,
-    LogCorrelationResponse
+    LogCorrelationResponse,
+    LogAnomalyResponse
 )
 
 from app.services.log_service import (
@@ -26,7 +27,8 @@ from app.services.log_service import (
     get_incident_logs,
     get_log_summary,
     get_log_analysis,
-    get_log_correlations
+    get_log_correlations,
+    get_log_anomalies
 )
 
 router = APIRouter(
