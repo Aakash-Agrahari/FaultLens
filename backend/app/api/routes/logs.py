@@ -17,14 +17,16 @@ from app.schemas.log import (
     LogEntryResponse,
     LogUploadResponse,
     LogSummaryResponse,
-    LogAnalysisResponse
+    LogAnalysisResponse,
+    LogCorrelationResponse
 )
 
 from app.services.log_service import (
     process_log_upload,
     get_incident_logs,
     get_log_summary,
-    get_log_analysis
+    get_log_analysis,
+    get_log_correlations
 )
 
 router = APIRouter(
@@ -115,3 +117,15 @@ def retrieve_log_analysis(
     db: Session = Depends(get_db)
 ):
     return get_log_analysis(db, incident_id)
+
+
+
+@router.get(
+    "/{incident_id}/logs/correlations",
+    response_model=LogCorrelationResponse
+)
+def retrieve_log_correlations(
+    incident_id: UUID,
+    db: Session = Depends(get_db)
+):
+    return get_log_correlations(db, incident_id)
