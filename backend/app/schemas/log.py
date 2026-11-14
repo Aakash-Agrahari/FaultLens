@@ -51,3 +51,18 @@ class LogAnalysisResponse(BaseModel):
     total_entries: int
     analyzed_entries: int
     findings: list[LogFindingResponse]    
+
+
+class LogCorrelationGroupResponse(BaseModel):
+    event_count: int
+    start_timestamp: datetime
+    end_timestamp: datetime
+    events: list[LogEntryResponse]
+
+
+class LogCorrelationResponse(BaseModel):
+    incident_id: UUID
+    analyzed_metrics: int
+    time_window_minutes: int
+    groups: list[LogCorrelationGroupResponse]
+    truncated: bool
