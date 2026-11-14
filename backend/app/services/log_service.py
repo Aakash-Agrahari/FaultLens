@@ -3,8 +3,7 @@ from collections import Counter
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.models.incident import Incident
@@ -145,4 +144,124 @@ def get_log_summary(db: Session, incident_id: UUID):
         "first_timestamp": first_timestamp,
         "last_timestamp": last_timestamp,
         "recent_errors": recent_errors
+    }
+
+
+
+def get_log_analysis(db: Session, incident_id: UUID):
+    incident = db.get(Incident, incident_id)
+
+    if incident is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Incident not found"
+        )
+
+    # Count all entries belonging to this incident.
+    total_entries = db.scalar(
+        select(func.count())
+        .select_from(LogEntry)
+        .where(LogEntry.incident_id == incident_id)
+    ) or 0
+
+    # Analyze warning and higher-severity entries.
+    statement = (
+        select(LogEntry)
+        .where(
+            LogEntry.incident_id == incident_id,
+            LogEntry.level.in_(["WARNING", "ERROR", "CRITICAL"])
+        )
+        .order_by(LogEntry.line_number.asc())
+    )
+
+    entries = db.scalars(statement).all()
+
+    # Each rule describes a potential problem.
+    rules = [
+        {
+            "rule_id": "DATABASE_CONNECTION_FAILURE",
+            "title": "Database connection failures",
+            "severity": "critical",
+            "description": "The logs indicate repeated database connection failures.",
+            "keywords": [
+                "connection refused",
+                "database connection failed",
+                "could not connect to database",
+                "database unavailable"
+            ]
+        },
+        {
+            "rule_id": "TIMEOUT_DETECTED",
+            "title": "Timeout detected",
+            "severity": "high",
+            "description": "One or more operations appear to be exceeding their allowed response time.",
+            "keywords": [
+                "timeout",
+                "timed out",
+                "time out"
+            ]
+        },
+        {
+            "rule_id": "MEMORY_PRESSURE",
+            "title": "Memory-related problem",
+            "severity": "high",
+            "description": "The logs indicate possible memory exhaustion or high memory usage.",
+            "keywords": [
+                "out of memory",
+                "memory usage",
+                "heap space",
+                "oom"
+            ]
+        },
+        {
+            "rule_id": "SERVICE_UNAVAILABLE",
+            "title": "Service unavailable",
+            "severity": "critical",
+            "description": "A service may be unavailable or failing to handle requests.",
+            "keywords": [
+                "service unavailable",
+                "503 service",
+                "payment service unavailable"
+            ]
+        },
+        {
+            "rule_id": "AUTHENTICATION_FAILURE",
+            "title": "Authentication failure",
+            "severity": "medium",
+            "description": "The logs indicate possible authentication or authorization failures.",
+            "keywords": [
+                "unauthorized",
+                "authentication failed",
+                "token expired",
+                "invalid token"
+            ]
+        }
+    ]
+
+    findings = []
+
+    for rule in rules:
+        matched_entries = []
+
+        for entry in entries:
+            message = entry.message.lower()
+
+            if any(keyword in message for keyword in rule["keywords"]):
+                matched_entries.append(entry)
+
+        if matched_entries:
+            findings.append({
+                "rule_id": rule["rule_id"],
+                "title": rule["title"],
+                "severity": rule["severity"],
+                "description": rule["description"],
+                "occurrences": len(matched_entries),
+                "evidence": matched_entries[:3]
+            })
+
+    return {
+        "incident_id": incident_id,
+        "total_entries": total_entries,
+        "analyzed_entries": len(entries),
+        "findings": findings
     }
