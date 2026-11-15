@@ -10,7 +10,7 @@ from app.models.incident import Incident
 from app.models.log_entry import LogEntry
 from app.services.log_parser import parse_log_file
 
-from datetime import datetime
+from datetime import timedelta
 
 from statistics import median
 
