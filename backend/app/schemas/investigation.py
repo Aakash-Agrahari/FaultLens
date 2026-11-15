@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydnatic import BaseModel
+from pydantic import BaseModel
 
 from app.schemas.log import(
     LogSummaryResponse,
