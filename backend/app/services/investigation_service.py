@@ -28,11 +28,12 @@ def investigate_incident(db: Session, incident_id: UUID):
     anomalies = get_log_anomalies(db, incident_id)
 
     #combine everything into one investigation report
-    return(
+    return{
         "incident_id": incident_id,
         "generated_at": datetime.now(timezone.utc),
         "summary": summary,
         "pattern_analysis": pattern_analysis,
         "correlations": correlations,
         "anomalies": anomalies
-    )
+    }
+        
