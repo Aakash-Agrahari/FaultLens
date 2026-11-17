@@ -1,4 +1,3 @@
-
 from google import genai
 
 from app.core.config import settings
