@@ -26,7 +26,7 @@ async def main():
     print("Sending request to Gemini...\n")
 
     result = await gemini.generate(
-        model_id="gemini-2.5-flash",
+        model_id="gemini-3.5-flash-lite",
         request=request
     )
 
