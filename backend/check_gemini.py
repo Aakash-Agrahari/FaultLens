@@ -1,27 +1,19 @@
-import asyncio
-
 from app.ai.router.provider_setup import initialize_providers
 
+def main():
 
-async def main():
     registry = initialize_providers()
 
-    print("Registered providers:")
-    print(registry.get_registered_provider_names())
+    print("Registered providers:\n")
 
-    print("\nDiscovering Gemini models...")
+    for provider in registry.get_registered_provider_names():
 
-    models = await registry.discover_models("gemini")
+        instance = registry.get_provider(provider)
 
-    print(f"\nDiscovered {len(models)} models:\n")
-
-    for model in models:
-        print(f"Model ID: {model.id}")
-        print(f"Display name: {model.display_name}")
-        print(f"Capabilities: {model.capabilities}")
-        print(f"Context window: {model.context_window}")
+        print("Provider:", provider)
+        print("Configured:", instance.is_configured)
         print("-" * 40)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
