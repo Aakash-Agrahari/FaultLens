@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
 
     GEMINI_API_KEY: str | None = None
+    GROQ_API_KEY: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
