@@ -178,13 +178,36 @@ class GroqProvider(BaseProvider):
         except Exception as exc:
             self._raise_provider_error(exc)
 
+    
     @staticmethod
     def _raise_provider_error(exc):
 
         status_code = getattr(exc, "status_code", None)
 
         if status_code == 429:
-            raise RateLimitError(str(exc)) from exc
+
+            response = getattr(exc, "response", None)
+
+            headers = (
+                response.headers
+                if response is not None
+                else {}
+            )
+
+            retry_after = headers.get("retry-after")
+
+            retry_after_seconds = None
+
+            if retry_after is not None:
+                try:
+                    retry_after_seconds = float(retry_after)
+                except (ValueError, TypeError):
+                    pass
+
+            raise RateLimitError(
+                str(exc),
+                retry_after_seconds=retry_after_seconds
+            ) from exc
 
         if status_code in (401, 403):
             raise AuthenticationError(str(exc)) from exc
@@ -208,3 +231,4 @@ class GroqProvider(BaseProvider):
             raise TemporaryProviderError(str(exc)) from exc
 
         raise ProviderError(str(exc)) from exc
+
