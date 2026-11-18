@@ -8,6 +8,7 @@ from app.ai.router.provider_health import provider_health_tracker
 
 from app.ai.providers.base import GenerationRequest
 
+from app.ai.router.usage_tracker import model_usage_tracker
 
 async def main():
 
@@ -57,6 +58,22 @@ async def main():
         print("Last error:", health.last_error)
         print("-" * 45)
 
+    print("\n========== MODEL USAGE ==========\n")
+
+    for usage in model_usage_tracker.get_all_usage():
+
+        print("Provider:", usage.provider)
+        print("Model:", usage.model_id)
+
+        print("Successful requests:", usage.successful_requests)
+
+        print("Prompt tokens:", usage.prompt_tokens)
+        print("Completion tokens:", usage.completion_tokens)
+        print("Total tokens:", usage.total_tokens)
+
+        print("Last used:", usage.last_used_at)
+
+        print("-" * 45)
 
 if __name__ == "__main__":
     asyncio.run(main())
