@@ -102,3 +102,6 @@ class ProviderHealthTracker:
     def get_all_health(self) -> list[ModelHealth]:
 
         return list(self._health.values())
+
+# Shared health tracker used throughout FaultLens.
+provider_health_tracker = ProviderHealthTracker()
