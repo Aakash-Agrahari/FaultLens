@@ -1,6 +1,5 @@
-
 from app.ai.router.provider_registry import provider_registry
-
+from app.ai.router.provider_limits import provider_limit_tracker
 from app.ai.router.provider_health import (
     provider_health_tracker
 )
@@ -12,7 +11,8 @@ from app.ai.router.usage_tracker import (
 from app.ai.providers.base import (
     GenerationRequest,
     GenerationResult,
-    ProviderError
+    ProviderError,
+    RateLimitError
 )
 
 
@@ -54,6 +54,12 @@ class ModelExecutor:
                 model_id
             )
 
+            # Record successful provider limit state.
+            provider_limit_tracker.record_success(
+                provider_name,
+                model_id
+            )
+
             # Record token usage.
             model_usage_tracker.record_usage(
                 provider_name,
@@ -64,6 +70,14 @@ class ModelExecutor:
             return result
 
         except Exception as exc:
+
+            if isinstance(exc, RateLimitError):
+
+                provider_limit_tracker.record_rate_limit(
+                    provider_name,
+                    model_id,
+                    exc
+                )
 
             provider_health_tracker.record_failure(
                 provider_name,
