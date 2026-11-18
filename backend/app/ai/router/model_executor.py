@@ -1,5 +1,13 @@
+
 from app.ai.router.provider_registry import provider_registry
-from app.ai.router.provider_health import provider_health_tracker
+
+from app.ai.router.provider_health import (
+    provider_health_tracker
+)
+
+from app.ai.router.usage_tracker import (
+    model_usage_tracker
+)
 
 from app.ai.providers.base import (
     GenerationRequest,
@@ -20,6 +28,7 @@ class ModelExecutor:
         provider = provider_registry.get_provider(provider_name)
 
         if not provider.is_configured:
+
             error = ProviderError(
                 f"Provider '{provider_name}' is not configured."
             )
@@ -33,14 +42,23 @@ class ModelExecutor:
             raise error
 
         try:
+
             result = await provider.generate(
                 model_id=model_id,
                 request=request
             )
 
+            # Record successful model health.
             provider_health_tracker.record_success(
                 provider_name,
                 model_id
+            )
+
+            # Record token usage.
+            model_usage_tracker.record_usage(
+                provider_name,
+                model_id,
+                result.usage
             )
 
             return result
@@ -56,5 +74,5 @@ class ModelExecutor:
             raise
 
 
-# Shared executor instance.
+# Shared executor.
 model_executor = ModelExecutor()
