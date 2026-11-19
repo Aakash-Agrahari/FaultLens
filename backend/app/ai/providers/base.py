@@ -1,3 +1,4 @@
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -9,10 +10,23 @@ class ModelInfo:
 
     id: str
     display_name: str
+
+    # Capabilities that have been confirmed as supported.
     capabilities: set[str] = field(default_factory=set)
+
     context_window: int | None = None
+
     supports_structured_output: bool = False
+
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    # Capability verification:
+    # True  = verified supported
+    # False = verified unsupported
+    # None  = unknown or not verified
+    capability_status: dict[str, bool | None] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -41,6 +55,7 @@ class ProviderError(Exception):
 
 
 class RateLimitError(ProviderError):
+
     def __init__(
         self,
         message: str,
@@ -48,6 +63,7 @@ class RateLimitError(ProviderError):
         rate_limit_headers: dict[str, str] | None = None
     ):
         super().__init__(message)
+
         self.retry_after_seconds = retry_after_seconds
         self.rate_limit_headers = rate_limit_headers or {}
 
@@ -91,6 +107,4 @@ class BaseProvider(ABC):
         request: GenerationRequest
     ) -> GenerationResult:
         """Generate a response using the selected model."""
-        pass    
-
-    
+        pass
