@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass, field
 
 from app.ai.router.model_catalog import CatalogModel
