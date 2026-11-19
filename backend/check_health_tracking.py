@@ -10,6 +10,8 @@ from app.ai.providers.base import GenerationRequest
 
 from app.ai.router.usage_tracker import model_usage_tracker
 
+from app.ai.router.provider_limits import provider_limit_tracker
+
 async def main():
 
     initialize_providers()
@@ -74,6 +76,33 @@ async def main():
         print("Last used:", usage.last_used_at)
 
         print("-" * 45)
+
+    print("\n========== PROVIDER QUOTA INFORMATION ==========\n")
+
+    for state in provider_limit_tracker.get_all_states():
+
+        print("Provider:", state.provider)
+        print("Model:", state.model_id)
+
+        print("\nRequest Quota:")
+        print("Request limit:", state.request_limit)
+        print("Remaining requests:", state.remaining_requests)
+        print("Request reset:", state.request_reset)
+
+        print("\nToken Quota:")
+        print("Token limit:", state.token_limit)
+        print("Remaining tokens:", state.remaining_tokens)
+        print("Token reset:", state.token_reset)
+
+        print("\nRate Limit Status:")
+        print("Rate limit observed:", state.rate_limit_observed)
+        print("Cooldown active:", provider_limit_tracker.is_cooldown_active(
+            state.provider,
+            state.model_id
+        ))
+
+        print("Last quota update:", state.last_quota_update)
+        print("-" * 50)    
 
 if __name__ == "__main__":
     asyncio.run(main())
