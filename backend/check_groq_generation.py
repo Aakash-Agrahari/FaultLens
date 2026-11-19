@@ -37,6 +37,14 @@ async def main():
     print("Usage:", result.usage)
     print("Finish reason:", result.finish_reason)
 
+    print("\nRate Limit Information:")
+
+    if result.rate_limits:
+        for name, value in result.rate_limits.items():
+            print(f"{name}: {value}")
+    else:
+        print("No rate-limit headers returned.")
+
     print("\nGenerated response:\n")
     print(result.content)
 
