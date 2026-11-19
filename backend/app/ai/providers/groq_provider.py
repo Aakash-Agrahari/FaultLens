@@ -1,3 +1,4 @@
+
 import groq
 from groq import AsyncGroq
 
@@ -135,11 +136,21 @@ class GroqProvider(BaseProvider):
                     }
                 }
 
-            response = await (
-                self._client.chat.completions.create(
+            # Request the raw HTTP response so we can access headers.
+            raw_response = await (
+                self._client.chat.completions
+                .with_raw_response.create(
                     **generation_args
                 )
             )
+
+            # Extract quota information from response headers.
+            rate_limits = self._extract_rate_limits(
+                raw_response.headers
+            )
+
+            # Parse the normal Groq completion response.
+            response = await raw_response.parse()
 
             if not response.choices:
                 raise ProviderError(
@@ -169,7 +180,8 @@ class GroqProvider(BaseProvider):
                 provider=self.name,
                 model=model_id,
                 usage=usage,
-                finish_reason=choice.finish_reason
+                finish_reason=choice.finish_reason,
+                rate_limits=rate_limits
             )
 
         except ProviderError:
@@ -178,7 +190,24 @@ class GroqProvider(BaseProvider):
         except Exception as exc:
             self._raise_provider_error(exc)
 
-    
+    @staticmethod
+    def _extract_rate_limits(headers):
+
+        header_names = [
+            "x-ratelimit-limit-requests",
+            "x-ratelimit-remaining-requests",
+            "x-ratelimit-reset-requests",
+            "x-ratelimit-limit-tokens",
+            "x-ratelimit-remaining-tokens",
+            "x-ratelimit-reset-tokens",
+        ]
+
+        return {
+            name: str(headers[name])
+            for name in header_names
+            if name in headers
+        }
+
     @staticmethod
     def _raise_provider_error(exc):
 
@@ -204,9 +233,14 @@ class GroqProvider(BaseProvider):
                 except (ValueError, TypeError):
                     pass
 
+            rate_limit_headers = (
+                GroqProvider._extract_rate_limits(headers)
+            )
+
             raise RateLimitError(
                 str(exc),
-                retry_after_seconds=retry_after_seconds
+                retry_after_seconds=retry_after_seconds,
+                rate_limit_headers=rate_limit_headers
             ) from exc
 
         if status_code in (401, 403):
@@ -231,21 +265,3 @@ class GroqProvider(BaseProvider):
             raise TemporaryProviderError(str(exc)) from exc
 
         raise ProviderError(str(exc)) from exc
-
-
-    @staticmethod
-    def _extract_rate_limits(headers):
-        header_names = [
-            "x-ratelimit-limit-requests",
-            "x-ratelimit-remaining-requests",
-            "x-ratelimit-reset-requests",
-            "x-ratelimit-limit-tokens",
-            "x-ratelimit-remaining-tokens",
-            "x-ratelimit-reset-tokens",
-        ]
-
-        return {
-            name: headers[name]
-            for name in header_names
-            if name in headers
-        }
