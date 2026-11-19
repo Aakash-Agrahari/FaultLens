@@ -146,11 +146,36 @@ class GeminiProvider(BaseProvider):
                     "Gemini returned an empty response."
                 )
 
+            usage = {}
+
+            interaction_usage = getattr(response, "usage", None)
+
+            if interaction_usage:
+                usage = {
+                    "prompt_tokens": getattr(
+                        interaction_usage,
+                        "total_input_tokens",
+                        0
+                    ) or 0,
+
+                    "completion_tokens": getattr(
+                        interaction_usage,
+                        "total_output_tokens",
+                        0
+                    ) or 0,
+
+                    "total_tokens": getattr(
+                        interaction_usage,
+                        "total_tokens",
+                        0
+                    ) or 0
+                }
+
             return GenerationResult(
                 content=content,
                 provider=self.name,
                 model=model_id,
-                usage={},
+                usage=usage,
                 finish_reason=None
             )
 
