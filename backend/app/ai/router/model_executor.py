@@ -1,12 +1,8 @@
-from app.ai.router.provider_registry import provider_registry
-from app.ai.router.provider_limits import provider_limit_tracker
-from app.ai.router.provider_health import (
-    provider_health_tracker
-)
 
-from app.ai.router.usage_tracker import (
-    model_usage_tracker
-)
+from app.ai.router.provider_registry import provider_registry
+from app.ai.router.provider_health import provider_health_tracker
+from app.ai.router.usage_tracker import model_usage_tracker
+from app.ai.router.provider_limits import provider_limit_tracker
 
 from app.ai.providers.base import (
     GenerationRequest,
@@ -28,7 +24,6 @@ class ModelExecutor:
         provider = provider_registry.get_provider(provider_name)
 
         if not provider.is_configured:
-
             error = ProviderError(
                 f"Provider '{provider_name}' is not configured."
             )
@@ -42,20 +37,13 @@ class ModelExecutor:
             raise error
 
         try:
-
             result = await provider.generate(
                 model_id=model_id,
                 request=request
             )
 
-            # Record successful model health.
+            # Record successful generation.
             provider_health_tracker.record_success(
-                provider_name,
-                model_id
-            )
-
-            # Record successful provider limit state.
-            provider_limit_tracker.record_success(
                 provider_name,
                 model_id
             )
@@ -67,12 +55,25 @@ class ModelExecutor:
                 result.usage
             )
 
+            # Record actual quota information.
+            provider_limit_tracker.record_quota_info(
+                provider_name,
+                model_id,
+                result.rate_limits
+            )
+
+            # Clear previous cooldown after successful generation.
+            provider_limit_tracker.record_success(
+                provider_name,
+                model_id
+            )
+
             return result
 
         except Exception as exc:
 
+            # Record rate-limit information when a 429 occurs.
             if isinstance(exc, RateLimitError):
-
                 provider_limit_tracker.record_rate_limit(
                     provider_name,
                     model_id,
@@ -88,5 +89,4 @@ class ModelExecutor:
             raise
 
 
-# Shared executor.
 model_executor = ModelExecutor()
