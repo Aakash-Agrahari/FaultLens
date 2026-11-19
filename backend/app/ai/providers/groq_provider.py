@@ -232,3 +232,20 @@ class GroqProvider(BaseProvider):
 
         raise ProviderError(str(exc)) from exc
 
+
+    @staticmethod
+    def _extract_rate_limits(headers):
+        header_names = [
+            "x-ratelimit-limit-requests",
+            "x-ratelimit-remaining-requests",
+            "x-ratelimit-reset-requests",
+            "x-ratelimit-limit-tokens",
+            "x-ratelimit-remaining-tokens",
+            "x-ratelimit-reset-tokens",
+        ]
+
+        return {
+            name: headers[name]
+            for name in header_names
+            if name in headers
+        }
