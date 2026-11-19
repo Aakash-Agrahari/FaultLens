@@ -28,13 +28,12 @@ class GenerationRequest:
 
 @dataclass
 class GenerationResult:
-    """Standardized response returned by any LLM provider."""
-
     content: str
     provider: str
     model: str
     usage: dict[str, int] = field(default_factory=dict)
     finish_reason: str | None = None
+    rate_limits: dict[str, Any] = field(default_factory=dict)
 
 
 class ProviderError(Exception):
