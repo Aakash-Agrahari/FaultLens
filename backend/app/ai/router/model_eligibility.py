@@ -6,26 +6,20 @@ from app.ai.router.model_catalog import CatalogModel
 
 @dataclass
 class ModelRequirements:
-
     required_capabilities: set[str] = field(
         default_factory=lambda: {"content_generation"}
     )
-
     minimum_context_window: int = 16000
-
     require_structured_output: bool = False
 
 
 @dataclass
 class EligibilityResult:
-
     provider: str
     model_id: str
     display_name: str
     eligible: bool
-
     reasons: list[str] = field(default_factory=list)
-
     warnings: list[str] = field(default_factory=list)
 
 
@@ -34,7 +28,7 @@ class ModelEligibilityEngine:
     def evaluate(
         self,
         catalog_model: CatalogModel,
-        requirements: ModelRequirements
+        requirements: ModelRequirements,
     ) -> EligibilityResult:
 
         model = catalog_model.model
@@ -45,65 +39,42 @@ class ModelEligibilityEngine:
         # Check required capabilities.
         for capability in requirements.required_capabilities:
 
-            capability_status = model.capability_status.get(
-                capability
-            )
+            capability_status = model.capability_status.get(capability)
 
-            # Backward compatibility:
-            # Existing capabilities are treated as verified.
-            if (
-                capability_status is None
-                and capability in model.capabilities
-            ):
-                capability_status = True
-
-            if capability_status is True:
-                continue
-
-            elif capability_status is False:
-
+            if capability_status is False:
                 reasons.append(
-                    f"Capability '{capability}' is verified as unsupported."
+                    f"Model is explicitly marked as not supporting {capability}."
                 )
 
-            else:
-
+            elif capability_status is None and capability not in model.capabilities:
                 warnings.append(
-                    f"Capability '{capability}' is unknown. "
-                    "The model can still be attempted."
+                    f"Support for {capability} has not been verified."
                 )
 
-        # Check context window.
+        # Context window is a preference for model selection,
+        # not a permanent eligibility restriction.
         if model.context_window is None:
-
             warnings.append(
-                "Context window is unknown. "
-                "Actual input compatibility must be verified."
+                "Context window information is unavailable."
             )
 
-        elif (
-            model.context_window
-            < requirements.minimum_context_window
-        ):
-
-            reasons.append(
-                "Known context window is smaller than required."
+        elif model.context_window < requirements.minimum_context_window:
+            warnings.append(
+                f"Context window is below the preferred "
+                f"{requirements.minimum_context_window} tokens."
             )
 
-        # Check structured output.
+        # Check structured-output support only when required.
         if requirements.require_structured_output:
 
             if model.supports_structured_output is False:
-
                 reasons.append(
-                    "Structured output is verified as unsupported."
+                    "Model is explicitly marked as not supporting structured output."
                 )
 
             elif model.supports_structured_output is None:
-
                 warnings.append(
-                    "Structured output support is unknown. "
-                    "The model can still be attempted."
+                    "Structured-output support has not been verified."
                 )
 
         return EligibilityResult(
@@ -112,23 +83,19 @@ class ModelEligibilityEngine:
             display_name=model.display_name,
             eligible=len(reasons) == 0,
             reasons=reasons,
-            warnings=warnings
+            warnings=warnings,
         )
 
     def filter_eligible_models(
         self,
         catalog_models: list[CatalogModel],
-        requirements: ModelRequirements
+        requirements: ModelRequirements,
     ) -> list[EligibilityResult]:
 
         results = []
 
         for catalog_model in catalog_models:
-
-            result = self.evaluate(
-                catalog_model,
-                requirements
-            )
+            result = self.evaluate(catalog_model, requirements)
 
             if result.eligible:
                 results.append(result)
