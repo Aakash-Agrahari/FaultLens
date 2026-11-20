@@ -1,3 +1,4 @@
+
 from dataclasses import dataclass, field
 
 from app.ai.router.model_catalog import CatalogModel
@@ -5,23 +6,19 @@ from app.ai.router.model_catalog import CatalogModel
 
 @dataclass
 class ModelRequirements:
-    # Capabilities required for a particular task.
+
     required_capabilities: set[str] = field(
         default_factory=lambda: {"content_generation"}
     )
 
-    # Minimum context window required.
     minimum_context_window: int = 16000
 
-    # Whether structured output is mandatory.
     require_structured_output: bool = False
-
-    # Whether models with unverified capabilities can be considered.
-    allow_unknown_capabilities: bool = False
 
 
 @dataclass
 class EligibilityResult:
+
     provider: str
     model_id: str
     display_name: str
@@ -29,10 +26,7 @@ class EligibilityResult:
 
     reasons: list[str] = field(default_factory=list)
 
-    # Capabilities for which verification is unavailable.
-    unverified_capabilities: list[str] = field(
-        default_factory=list
-    )
+    warnings: list[str] = field(default_factory=list)
 
 
 class ModelEligibilityEngine:
@@ -46,7 +40,7 @@ class ModelEligibilityEngine:
         model = catalog_model.model
 
         reasons = []
-        unverified_capabilities = []
+        warnings = []
 
         # Check required capabilities.
         for capability in requirements.required_capabilities:
@@ -67,23 +61,24 @@ class ModelEligibilityEngine:
                 continue
 
             elif capability_status is False:
+
                 reasons.append(
-                    f"Capability '{capability}' is not supported."
+                    f"Capability '{capability}' is verified as unsupported."
                 )
 
             else:
-                unverified_capabilities.append(capability)
 
-                if not requirements.allow_unknown_capabilities:
-                    reasons.append(
-                        f"Capability '{capability}' is not verified."
-                    )
+                warnings.append(
+                    f"Capability '{capability}' is unknown. "
+                    "The model can still be attempted."
+                )
 
         # Check context window.
         if model.context_window is None:
 
-            reasons.append(
-                "Context window information is unavailable."
+            warnings.append(
+                "Context window is unknown. "
+                "Actual input compatibility must be verified."
             )
 
         elif (
@@ -92,18 +87,24 @@ class ModelEligibilityEngine:
         ):
 
             reasons.append(
-                "Context window is smaller than required."
+                "Known context window is smaller than required."
             )
 
-        # Check structured output support.
-        if (
-            requirements.require_structured_output
-            and not model.supports_structured_output
-        ):
+        # Check structured output.
+        if requirements.require_structured_output:
 
-            reasons.append(
-                "Structured output support is not verified."
-            )
+            if model.supports_structured_output is False:
+
+                reasons.append(
+                    "Structured output is verified as unsupported."
+                )
+
+            elif model.supports_structured_output is None:
+
+                warnings.append(
+                    "Structured output support is unknown. "
+                    "The model can still be attempted."
+                )
 
         return EligibilityResult(
             provider=catalog_model.provider,
@@ -111,7 +112,7 @@ class ModelEligibilityEngine:
             display_name=model.display_name,
             eligible=len(reasons) == 0,
             reasons=reasons,
-            unverified_capabilities=unverified_capabilities
+            warnings=warnings
         )
 
     def filter_eligible_models(
