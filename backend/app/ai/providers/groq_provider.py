@@ -65,7 +65,7 @@ class GroqProvider(BaseProvider):
                             "context_window",
                             None
                         ),
-                        supports_structured_output=False,
+                        supports_structured_output=None,
                         metadata={
                             "provider": "groq",
                             "owned_by": getattr(
