@@ -80,7 +80,7 @@ class GeminiProvider(BaseProvider):
                             "input_token_limit",
                             None
                         ),
-                        supports_structured_output=False,
+                        supports_structured_output=None,
                         metadata={
                             "provider": "gemini",
                             "supported_actions": list(
