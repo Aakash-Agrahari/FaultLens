@@ -16,7 +16,7 @@ class ModelInfo:
 
     context_window: int | None = None
 
-    supports_structured_output: bool = False
+    supports_structured_output: bool | None = None
 
     metadata: dict[str, Any] = field(default_factory=dict)
 
