@@ -97,8 +97,15 @@ class ModelSelector:
                 )
             )
 
-            # A model in an active cooldown should not be attempted.
+            # Skip models currently in cooldown.
             if cooldown_active:
+                continue
+
+            # Skip models whose latest reported quota is exhausted.
+            if (
+                limit_state.remaining_tokens == 0
+                or limit_state.remaining_requests == 0
+            ):
                 continue
 
             warnings = list(eligibility.warnings)
