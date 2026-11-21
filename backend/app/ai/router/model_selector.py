@@ -17,15 +17,11 @@ class ModelCandidate:
     display_name: str
     context_window: int | None
     eligibility: EligibilityResult
-
     health_status: str
     consecutive_failures: int
-
     cooldown_active: bool
-
     remaining_requests: int | None
     remaining_tokens: int | None
-
     warnings: list[str] = field(default_factory=list)
 
 
@@ -37,7 +33,6 @@ class ModelSelector:
         eligibility_engine: ModelEligibilityEngine | None = None,
     ):
         self.catalog = catalog
-
         self.eligibility_engine = (
             eligibility_engine or ModelEligibilityEngine()
         )
@@ -51,9 +46,7 @@ class ModelSelector:
     ) -> list[ModelCandidate]:
 
         catalog_models = self.catalog.get_all_models()
-
         candidates = []
-
         attempted_models = attempted_models or set()
 
         required_tokens = None
@@ -68,7 +61,6 @@ class ModelSelector:
             provider = catalog_model.provider
             model = catalog_model.model
 
-            # Avoid repeating a model during the same routing attempt.
             if (provider, model.id) in attempted_models:
                 continue
 
@@ -97,11 +89,9 @@ class ModelSelector:
                 )
             )
 
-            # Skip models currently in cooldown.
             if cooldown_active:
                 continue
 
-            # Skip models whose latest reported quota is exhausted.
             if (
                 limit_state.remaining_tokens == 0
                 or limit_state.remaining_requests == 0
@@ -115,23 +105,13 @@ class ModelSelector:
                     f"Model health status: {health.status}"
                 )
 
-            if model.context_window is not None:
-                if (
-                    required_tokens is not None
-                    and model.context_window < required_tokens
-                ):
-                    warnings.append(
-                        "Context window is smaller than this request."
-                    )
-
-            if limit_state.remaining_tokens == 0:
+            if (
+                model.context_window is not None
+                and required_tokens is not None
+                and model.context_window < required_tokens
+            ):
                 warnings.append(
-                    "No remaining tokens reported in the latest quota data."
-                )
-
-            if limit_state.remaining_requests == 0:
-                warnings.append(
-                    "No remaining requests reported in the latest quota data."
+                    "Context window is smaller than this request."
                 )
 
             candidates.append(
@@ -165,7 +145,6 @@ class ModelSelector:
             capability_rank = 0
 
             for capability in requirements.required_capabilities:
-
                 status = model.capability_status.get(capability)
 
                 if status is None and capability not in model.capabilities:
@@ -175,13 +154,10 @@ class ModelSelector:
             # Prefer models that can fit the complete request.
             if required_tokens is None:
                 context_rank = 0
-
             elif model.context_window is None:
                 context_rank = 1
-
             elif model.context_window >= required_tokens:
                 context_rank = 0
-
             else:
                 context_rank = 2
 
@@ -207,29 +183,19 @@ class ModelSelector:
                 candidate.remaining_tokens is not None
                 and candidate.remaining_tokens > 0
             ):
-                            # Prefer models with more known available quota.
-                            if candidate.remaining_tokens is not None:
-                                quota_rank = 0
-                                quota_amount = -candidate.remaining_tokens
-
-                            elif candidate.remaining_requests is not None:
-                                quota_rank = 0
-                                quota_amount = -candidate.remaining_requests
-
-                            else:
-                                quota_rank = 1
-                                quota_amount = 0
+                quota_rank = 0
+                quota_amount = -candidate.remaining_tokens
 
             elif (
-                candidate.remaining_tokens is None
-                and candidate.remaining_requests != 0
+                candidate.remaining_requests is not None
+                and candidate.remaining_requests > 0
             ):
-                quota_rank = 1
-                quota_amount = float("inf")
+                quota_rank = 0
+                quota_amount = -candidate.remaining_requests
 
             else:
-                quota_rank = 2
-                quota_amount = float("inf")
+                quota_rank = 1
+                quota_amount = 0
 
             return (
                 capability_rank,
