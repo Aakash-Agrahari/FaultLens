@@ -207,8 +207,18 @@ class ModelSelector:
                 candidate.remaining_tokens is not None
                 and candidate.remaining_tokens > 0
             ):
-                quota_rank = 0
-                quota_amount = candidate.remaining_tokens
+                            # Prefer models with more known available quota.
+                            if candidate.remaining_tokens is not None:
+                                quota_rank = 0
+                                quota_amount = -candidate.remaining_tokens
+
+                            elif candidate.remaining_requests is not None:
+                                quota_rank = 0
+                                quota_amount = -candidate.remaining_requests
+
+                            else:
+                                quota_rank = 1
+                                quota_amount = 0
 
             elif (
                 candidate.remaining_tokens is None
