@@ -1,4 +1,6 @@
-from dataclasses import dataclass, field
+
+from dataclasses import dataclass
+from typing import Callable
 
 from app.ai.providers.base import (
     AuthenticationError,
@@ -35,7 +37,6 @@ class FallbackExecutionError(Exception):
 class FallbackExecutor:
 
     def __init__(self, selector: ModelSelector):
-
         self.selector = selector
         self.executor = model_executor
 
@@ -45,6 +46,7 @@ class FallbackExecutor:
         requirements: ModelRequirements | None = None,
         estimated_input_tokens: int | None = None,
         max_attempts: int | None = None,
+        result_validator: Callable[[GenerationResult], None] | None = None,
     ) -> GenerationResult:
 
         if requirements is None:
@@ -62,7 +64,6 @@ class FallbackExecutor:
             raise FallbackExecutionError([])
 
         attempts = []
-        attempted_models = set()
         unavailable_providers = set()
 
         attempt_limit = (
@@ -79,15 +80,8 @@ class FallbackExecutor:
             provider = candidate.provider
             model_id = candidate.model_id
 
-            model_key = (provider, model_id)
-
-            if model_key in attempted_models:
-                continue
-
             if provider in unavailable_providers:
                 continue
-
-            attempted_models.add(model_key)
 
             try:
 
@@ -96,6 +90,10 @@ class FallbackExecutor:
                     model_id=model_id,
                     request=request,
                 )
+
+                # Validate the generated content before accepting it.
+                if result_validator is not None:
+                    result_validator(result)
 
                 attempts.append(
                     FallbackAttempt(
