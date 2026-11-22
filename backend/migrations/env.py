@@ -1,4 +1,3 @@
-
 from logging.config import fileConfig
 
 from alembic import context
@@ -11,6 +10,8 @@ from app.db.database import Base
 from app.models.incident import Incident
 
 from app.models.log_entry import LogEntry
+
+from app.models.ai_investigation import IncidentInvestigation
 
 config = context.config
 
