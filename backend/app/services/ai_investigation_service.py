@@ -1,11 +1,13 @@
 import re
 import json
 from uuid import UUID
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.incident import Incident
+from app.models.ai_investigation import IncidentInvestigation
 from app.schemas.ai_investigation import RootCauseAnalysis
 
 from app.services.investigation_service import investigate_incident
@@ -137,7 +139,6 @@ def prepare_ai_investigation(db: Session, incident_id: UUID):
         evidence_context=evidence_context
     )
 
-    # Include the exact response schema in the prompt.
     response_schema = RootCauseAnalysis.model_json_schema()
 
     system_prompt += (
@@ -158,7 +159,6 @@ def parse_root_cause_result(content: str) -> RootCauseAnalysis:
 
     content = content.strip()
 
-    # Remove Markdown JSON fences if a model adds them.
     if content.startswith("```"):
         content = re.sub(
             r"^```(?:json)?\s*",
@@ -177,57 +177,88 @@ def validate_generation_result(result):
     parse_root_cause_result(result.content)
 
 
-async def run_ai_investigation(db: Session, incident_id: UUID):
-    """Run a complete AI-powered incident investigation."""
-
-    # Prepare evidence first. This also checks whether the incident exists.
-    prompts = prepare_ai_investigation(db, incident_id)
-
-    # Register configured providers.
-    initialize_providers()
-
-    # Discover models dynamically.
-    catalog = ModelCatalog(provider_registry)
-    catalog_result = await catalog.refresh_all()
-
-    discovered_models = catalog_result["models"]
-
-    if not discovered_models:
-        raise HTTPException(
-            status_code=503,
-            detail="No models are currently available for investigation."
-        )
-
-    # Create the model selector and fallback executor.
-    selector = ModelSelector(catalog)
-    fallback = FallbackExecutor(selector)
-
-    # Estimate input tokens for model selection.
-    combined_prompt = (
-        prompts["system_prompt"] + prompts["user_prompt"]
-    )
-
-    estimated_input_tokens = max(
-        1,
-        (len(combined_prompt) + 3) // 4
-    )
-
-    # Require text generation.
-    # Unknown capability information remains eligible.
-    requirements = ModelRequirements(
-        required_capabilities={"content_generation"},
-        minimum_context_window=16000,
-        require_structured_output=False
-    )
-
-    request = GenerationRequest(
-        system_prompt=prompts["system_prompt"],
-        user_prompt=prompts["user_prompt"],
-        temperature=0.2,
-        max_output_tokens=2048
-    )
+def mark_investigation_failed(
+    db: Session,
+    investigation: IncidentInvestigation,
+    error_message: str
+):
+    """Persist a failed investigation status safely."""
 
     try:
+        db.rollback()
+
+        investigation.status = "failed"
+        investigation.error_message = error_message
+        investigation.completed_at = datetime.now(timezone.utc)
+
+        db.add(investigation)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+
+async def run_ai_investigation(db: Session, incident_id: UUID):
+    """Run an AI investigation and persist its result."""
+
+    # Prepare evidence and verify that the incident exists.
+    prompts = prepare_ai_investigation(db, incident_id)
+
+    # Create and commit the pending investigation before provider calls.
+    investigation = IncidentInvestigation(
+        incident_id=incident_id,
+        status="pending"
+    )
+
+    db.add(investigation)
+    db.commit()
+    db.refresh(investigation)
+
+    try:
+        # Register configured providers.
+        initialize_providers()
+
+        # Discover models dynamically.
+        catalog = ModelCatalog(provider_registry)
+        catalog_result = await catalog.refresh_all()
+
+        discovered_models = catalog_result["models"]
+
+        if not discovered_models:
+            raise HTTPException(
+                status_code=503,
+                detail="No models are currently available for investigation."
+            )
+
+        # Create model selector and fallback executor.
+        selector = ModelSelector(catalog)
+        fallback = FallbackExecutor(selector)
+
+        # Estimate input tokens for model selection.
+        combined_prompt = (
+            prompts["system_prompt"] + prompts["user_prompt"]
+        )
+
+        estimated_input_tokens = max(
+            1,
+            (len(combined_prompt) + 3) // 4
+        )
+
+        requirements = ModelRequirements(
+            required_capabilities={"content_generation"},
+            minimum_context_window=16000,
+            require_structured_output=False
+        )
+
+        request = GenerationRequest(
+            system_prompt=prompts["system_prompt"],
+            user_prompt=prompts["user_prompt"],
+            temperature=0.2,
+            max_output_tokens=2048
+        )
+
+        # Generate the response with automatic fallback.
         result = await fallback.generate(
             request=request,
             requirements=requirements,
@@ -235,7 +266,53 @@ async def run_ai_investigation(db: Session, incident_id: UUID):
             result_validator=validate_generation_result
         )
 
+        # Validate and parse the final response.
+        analysis = parse_root_cause_result(result.content)
+
+        # Persist successful investigation.
+        investigation.status = "completed"
+        investigation.analysis = analysis.model_dump()
+        investigation.provider = result.provider
+        investigation.model = result.model
+        investigation.usage = result.usage
+        investigation.error_message = None
+        investigation.completed_at = datetime.now(timezone.utc)
+
+        db.add(investigation)
+        db.commit()
+        db.refresh(investigation)
+
+        return {
+            "investigation_id": str(investigation.id),
+            "incident_id": str(incident_id),
+            "status": investigation.status,
+            "analysis": investigation.analysis,
+            "generation": {
+                "provider": result.provider,
+                "model": result.model,
+                "usage": result.usage,
+                "finish_reason": result.finish_reason
+            },
+            "model_discovery": {
+                "total_discovered": len(discovered_models),
+                "provider_discovery_failures": list(
+                    catalog_result["failures"].keys()
+                )
+            }
+        }
+
     except FallbackExecutionError as exc:
+        error_message = (
+            "All available model attempts failed. "
+            f"Total attempts: {len(exc.attempts)}."
+        )
+
+        mark_investigation_failed(
+            db,
+            investigation,
+            error_message
+        )
+
         raise HTTPException(
             status_code=503,
             detail=(
@@ -245,22 +322,24 @@ async def run_ai_investigation(db: Session, incident_id: UUID):
             )
         ) from exc
 
-    # Parse the validated result into the response schema.
-    analysis = parse_root_cause_result(result.content)
+    except HTTPException as exc:
+        mark_investigation_failed(
+            db,
+            investigation,
+            str(exc.detail)
+        )
+        raise
 
-    return {
-        "incident_id": str(incident_id),
-        "analysis": analysis.model_dump(),
-        "generation": {
-            "provider": result.provider,
-            "model": result.model,
-            "usage": result.usage,
-            "finish_reason": result.finish_reason
-        },
-        "model_discovery": {
-            "total_discovered": len(discovered_models),
-            "provider_discovery_failures": list(
-                catalog_result["failures"].keys()
-            )
-        }
-    }
+    except Exception as exc:
+        # Keep raw exception details out of the database response.
+        mark_investigation_failed(
+            db,
+            investigation,
+            "An unexpected error occurred during AI investigation. "
+            "Check server logs for details."
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail="AI investigation failed. Please try again later."
+        ) from exc
