@@ -34,6 +34,7 @@ class GeminiProvider(BaseProvider):
     def is_configured(self):
         return bool(self._api_key)
 
+    
     async def list_models(self) -> list[ModelInfo]:
 
         if not self._client:
@@ -48,13 +49,6 @@ class GeminiProvider(BaseProvider):
 
             async for model in pager:
 
-                supported_actions = (
-                    getattr(model, "supported_actions", None) or []
-                )
-
-                if "generateContent" not in supported_actions:
-                    continue
-
                 model_id = getattr(model, "name", "")
 
                 if not model_id:
@@ -62,10 +56,42 @@ class GeminiProvider(BaseProvider):
 
                 model_id = model_id.split("/", 1)[-1]
 
-                capabilities = {"content_generation"}
+                # None means capability information is unavailable.
+                supported_actions_raw = getattr(
+                    model,
+                    "supported_actions",
+                    None
+                )
 
-                if "embedContent" in supported_actions:
-                    capabilities.add("embeddings")
+                metadata_available = supported_actions_raw is not None
+                supported_actions = list(supported_actions_raw or [])
+
+                capabilities = set()
+                capability_status = {}
+
+                if metadata_available:
+
+                    supports_generation = (
+                        "generateContent" in supported_actions
+                    )
+
+                    supports_embeddings = (
+                        "embedContent" in supported_actions
+                    )
+
+                    capability_status["content_generation"] = (
+                        supports_generation
+                    )
+
+                    capability_status["embeddings"] = (
+                        supports_embeddings
+                    )
+
+                    if supports_generation:
+                        capabilities.add("content_generation")
+
+                    if supports_embeddings:
+                        capabilities.add("embeddings")
 
                 models.append(
                     ModelInfo(
@@ -81,15 +107,17 @@ class GeminiProvider(BaseProvider):
                             None
                         ),
                         supports_structured_output=None,
+                        capability_status=capability_status,
                         metadata={
                             "provider": "gemini",
-                            "supported_actions": list(
-                                supported_actions
-                            ),
+                            "supported_actions": supported_actions,
                             "output_token_limit": getattr(
                                 model,
                                 "output_token_limit",
                                 None
+                            ),
+                            "capability_metadata_available": (
+                                metadata_available
                             )
                         }
                     )
@@ -99,6 +127,7 @@ class GeminiProvider(BaseProvider):
 
         except Exception as exc:
             self._raise_provider_error(exc)
+
 
     async def generate(
         self,
