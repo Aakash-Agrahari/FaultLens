@@ -1,11 +1,26 @@
+import re
+import json
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.incident import Incident
+from app.schemas.ai_investigation import RootCauseAnalysis
+
 from app.services.investigation_service import investigate_incident
 from app.services.ai_prompt_builder import build_investigation_prompt
+
+from app.ai.providers.base import GenerationRequest
+from app.ai.router.provider_registry import provider_registry
+from app.ai.router.provider_setup import initialize_providers
+from app.ai.router.model_catalog import ModelCatalog
+from app.ai.router.model_selector import ModelSelector
+from app.ai.router.model_eligibility import ModelRequirements
+from app.ai.router.fallback_executor import (
+    FallbackExecutor,
+    FallbackExecutionError,
+)
 
 
 def serialize_log_entry(entry):
@@ -25,7 +40,8 @@ def serialize_log_entry(entry):
 
 
 def prepare_ai_investigation(db: Session, incident_id: UUID):
-    # Retrieve the incident.
+    """Prepare incident evidence and provider-independent prompts."""
+
     incident = db.get(Incident, incident_id)
 
     if incident is None:
@@ -34,10 +50,8 @@ def prepare_ai_investigation(db: Session, incident_id: UUID):
             detail="Incident not found"
         )
 
-    # Run the existing investigation pipeline.
     report = investigate_incident(db, incident_id)
 
-    # Prepare incident information.
     incident_context = {
         "title": incident.title,
         "description": incident.description,
@@ -51,7 +65,6 @@ def prepare_ai_investigation(db: Session, incident_id: UUID):
     correlations = report["correlations"]
     anomalies = report["anomalies"]
 
-    # Prepare a compact summary.
     summary_context = {
         "total_entries": summary["total_entries"],
         "level_counts": summary["level_counts"],
@@ -69,7 +82,6 @@ def prepare_ai_investigation(db: Session, incident_id: UUID):
         ]
     }
 
-    # Prepare rule-based findings.
     pattern_context = [
         {
             "rule_id": finding["rule_id"],
@@ -79,13 +91,12 @@ def prepare_ai_investigation(db: Session, incident_id: UUID):
             "occurrences": finding["occurrences"],
             "evidence": [
                 serialize_log_entry(entry)
-                for entry in finding["evidence"]
+                for entry in finding["evidence"][:5]
             ]
         }
         for finding in pattern_analysis["findings"]
     ]
 
-    # Prepare time-based correlations.
     correlation_context = [
         {
             "event_count": group["event_count"],
@@ -99,7 +110,6 @@ def prepare_ai_investigation(db: Session, incident_id: UUID):
         for group in correlations["groups"][:10]
     ]
 
-    # Prepare anomaly findings.
     anomaly_context = [
         {
             "bucket_start": anomaly["bucket_start"].isoformat(),
@@ -122,13 +132,135 @@ def prepare_ai_investigation(db: Session, incident_id: UUID):
         "anomalies": anomaly_context
     }
 
-    # Generate provider-independent prompts.
     system_prompt, user_prompt = build_investigation_prompt(
         incident_context=incident_context,
         evidence_context=evidence_context
     )
 
+    # Include the exact response schema in the prompt.
+    response_schema = RootCauseAnalysis.model_json_schema()
+
+    system_prompt += (
+        "\n\nREQUIRED JSON SCHEMA:\n"
+        + json.dumps(response_schema, indent=2)
+        + "\nReturn only valid JSON matching this schema. "
+        "Do not wrap the JSON in Markdown."
+    )
+
     return {
         "system_prompt": system_prompt,
         "user_prompt": user_prompt
+    }
+
+
+def parse_root_cause_result(content: str) -> RootCauseAnalysis:
+    """Parse and validate the model response."""
+
+    content = content.strip()
+
+    # Remove Markdown JSON fences if a model adds them.
+    if content.startswith("```"):
+        content = re.sub(
+            r"^```(?:json)?\s*",
+            "",
+            content,
+            flags=re.IGNORECASE
+        )
+        content = re.sub(r"\s*```$", "", content)
+
+    return RootCauseAnalysis.model_validate_json(content)
+
+
+def validate_generation_result(result):
+    """Reject invalid model responses so fallback can continue."""
+
+    parse_root_cause_result(result.content)
+
+
+async def run_ai_investigation(db: Session, incident_id: UUID):
+    """Run a complete AI-powered incident investigation."""
+
+    # Prepare evidence first. This also checks whether the incident exists.
+    prompts = prepare_ai_investigation(db, incident_id)
+
+    # Register configured providers.
+    initialize_providers()
+
+    # Discover models dynamically.
+    catalog = ModelCatalog(provider_registry)
+    catalog_result = await catalog.refresh_all()
+
+    discovered_models = catalog_result["models"]
+
+    if not discovered_models:
+        raise HTTPException(
+            status_code=503,
+            detail="No models are currently available for investigation."
+        )
+
+    # Create the model selector and fallback executor.
+    selector = ModelSelector(catalog)
+    fallback = FallbackExecutor(selector)
+
+    # Estimate input tokens for model selection.
+    combined_prompt = (
+        prompts["system_prompt"] + prompts["user_prompt"]
+    )
+
+    estimated_input_tokens = max(
+        1,
+        (len(combined_prompt) + 3) // 4
+    )
+
+    # Require text generation.
+    # Unknown capability information remains eligible.
+    requirements = ModelRequirements(
+        required_capabilities={"content_generation"},
+        minimum_context_window=16000,
+        require_structured_output=False
+    )
+
+    request = GenerationRequest(
+        system_prompt=prompts["system_prompt"],
+        user_prompt=prompts["user_prompt"],
+        temperature=0.2,
+        max_output_tokens=2048
+    )
+
+    try:
+        result = await fallback.generate(
+            request=request,
+            requirements=requirements,
+            estimated_input_tokens=estimated_input_tokens,
+            result_validator=validate_generation_result
+        )
+
+    except FallbackExecutionError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "AI investigation could not be completed. "
+                f"All available model attempts failed "
+                f"({len(exc.attempts)} attempts)."
+            )
+        ) from exc
+
+    # Parse the validated result into the response schema.
+    analysis = parse_root_cause_result(result.content)
+
+    return {
+        "incident_id": str(incident_id),
+        "analysis": analysis.model_dump(),
+        "generation": {
+            "provider": result.provider,
+            "model": result.model,
+            "usage": result.usage,
+            "finish_reason": result.finish_reason
+        },
+        "model_discovery": {
+            "total_discovered": len(discovered_models),
+            "provider_discovery_failures": list(
+                catalog_result["failures"].keys()
+            )
+        }
     }
