@@ -36,7 +36,8 @@ def run_incident_investigation(
 
 # AI-powered investigation endpoint.
 @router.post(
-    "/{incident_id}/ai-investigation"
+    "/{incident_id}/ai-investigation",
+    response_model=AIInvestigationResponse
 )
 async def run_ai_incident_investigation(
     incident_id: UUID,
