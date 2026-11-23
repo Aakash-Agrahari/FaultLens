@@ -46,7 +46,8 @@ async def run_ai_incident_investigation(
 
 # Retrieve saved AI investigation history.
 @router.get(
-    "/{incident_id}/ai-investigations"
+    "/{incident_id}/ai-investigations",
+    response_model=AIInvestigationHistoryResponse
 )
 def get_ai_investigation_history(
     incident_id: UUID,
