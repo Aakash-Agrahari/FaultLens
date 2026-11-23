@@ -50,3 +50,22 @@ class AIInvestigationHistoryResponse(BaseModel):
     incident_id: str
     total: int = Field(ge=0)
     investigations: list[AIInvestigationHistoryItem]
+
+
+class AIGenerationMetadata(BaseModel):
+    provider: str
+    model: str
+    usage: dict | None = None
+    finish_reason: str | None = None
+
+class ModelDiscoveryMetadata(BaseModel):
+    total_discovered: int
+    provider_discovery_failures: list[str]
+
+class AIInvestigationResponse(BaseModel):
+    investigation_id: str
+    incident_id: str
+    status: str
+    analysis: RootCauseAnalysis
+    generation: AIGenerationMetadata
+    model_discovery: ModelDiscoveryMetadata                
