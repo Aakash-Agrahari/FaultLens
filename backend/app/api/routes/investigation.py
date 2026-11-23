@@ -10,7 +10,7 @@ from app.models.ai_investigation import IncidentInvestigation
 from app.schemas.investigation import IncidentInvestigationResponse
 from app.services.investigation_service import investigate_incident
 from app.services.ai_investigation_service import run_ai_investigation
-
+from app.schemas.ai_investigation import AIInvestigationHistoryResponse
 
 router = APIRouter(
     prefix="/api/v1/incidents",
